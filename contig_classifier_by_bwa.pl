@@ -24,6 +24,7 @@ my %opt;
 my $res=GetOptions(\%opt,
     'input|i=s',
     'pacbio',
+    'nanopore',
     'threads|t=s',
     'prefix|p=s',
     'db|d=s',
@@ -52,17 +53,20 @@ executeCommand("ln -s $abs_path temp$$/$FILENAME");
 
 $period = &timeInterval($time);
 $mem    = &memUsage();
-print "[$period] Running BWA\n";
+print "[$period] Running minimap2...\n";
 if( $opt{pacbio} ){
-    executeCommand("bwa mem -B5 -Q2 -E1 -a -M -t$THREADS $DB temp$$/$FILENAME > temp$$/$FILENAME.sam 2>>$PREFIX.log");
+    executeCommand("minimap2 -x map-pb -a -t$THREADS $DB temp$$/$FILENAME > temp$$/$FILENAME.sam 2>>$PREFIX.log");
+}
+elsif( $opt{nanopore} ){
+    executeCommand("minimap2 -x map-ont -a -t$THREADS $DB temp$$/$FILENAME > temp$$/$FILENAME.sam 2>>$PREFIX.log");
 }
 else{
-    executeCommand("bwa mem -a -M -t $THREADS $DB temp$$/$FILENAME > temp$$/$FILENAME.sam 2>>$PREFIX.log");
+    executeCommand("minimap2 -x asm10 -a -t $THREADS $DB temp$$/$FILENAME > temp$$/$FILENAME.sam 2>>$PREFIX.log");
 }
 
 $period = &timeInterval($time);
 print "[$period] Filtering unmapped contigs\n";
-executeCommand("samtools view -F4  temp$$/$FILENAME.sam > temp$$/$FILENAME.mapped.sam 2>>$PREFIX.log");
+executeCommand("samtools view -F4 temp$$/$FILENAME.sam > temp$$/$FILENAME.mapped.sam 2>>$PREFIX.log");
 
 $period = &timeInterval($time);
 print "[$period] Splitting SAM file\n";
