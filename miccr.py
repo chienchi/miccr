@@ -32,7 +32,7 @@ def parse_params(ver):
     eg = p.add_mutually_exclusive_group(required=True)
 
     eg.add_argument('-i', '--input', 
-            metavar='[FASTQ]', nargs='*', type=str,
+            metavar='[FASTQ]', type=str,
                     help="Input one or multiple FASTQ file(s). Use space to separate multiple input files.")
 
     eg.add_argument('-f', '--paf', 
@@ -89,7 +89,7 @@ def parse_params(ver):
         p.error( '--input and --paf are incompatible options.' )
 
     if not args_parsed.dbPath:
-        if args_parsed.database and "/" in args_parsed.database[0] and os.path.isfile( args_parsed.database[0] + ".amb" ):
+        if args_parsed.database and "/" in args_parsed.database[0]:
             db_dir = re.search( '^(.*?)[^\/]+$', args_parsed.database[0] )
             args_parsed.dbPath = db_dir.group(1)
         else:
@@ -282,7 +282,7 @@ def processPAF(paf, cpus):
 if __name__ == '__main__':
     argvs    = parse_params( __version__ )
     begin_t  = time.time()
-    paf      = "%s/%s.paf" % (argvs.outdir, argvs.prefix) if not os.path.exists(argvs.paf) else argvs.paf
+    paf      = "%s/%s.paf" % (argvs.outdir, argvs.prefix) if not argvs.paf else argvs.paf
     logfile  = "%s/%s.log" % (argvs.outdir, argvs.prefix)
     outfile  = "%s/%s.tsv" % (argvs.outdir, argvs.prefix)
 
@@ -300,7 +300,7 @@ if __name__ == '__main__':
     # if reads provided
     if argvs.input:
         print_message( "Running minimap2...", argvs.silent, begin_t, logfile )
-        contig_mapping( argvs.input, argvs.database, argvs.numthreads, paf, logfile )
+        contig_mapping( argvs.input, argvs.database, argvs.numthreads, argvs.platform, paf, logfile )
         print_message( "Done mapping reads.", argvs.silent, begin_t, logfile )
 
     # processing PAF
