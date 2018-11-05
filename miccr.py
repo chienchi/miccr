@@ -15,7 +15,8 @@ import subprocess
 import pandas as pd
 import taxonomy as t
 import numpy as np
-from bitstring import BitArray, BitStream
+import tqdm
+from bitarray import bitarray
 from multiprocessing import Pool
 
 def parse_params(ver):
@@ -48,6 +49,9 @@ def parse_params(ver):
                     Otherwise, the program will search "database/" in program directory.
                     [default: database/]""")
 
+    p.add_argument( '--stdout', action="store_true",
+                    help="Disable all messages.")
+
     p.add_argument('-x','--platform',
             type=str, default='asm10',
                     choices=['asm5', 'asm10', 'map-pb', 'map-ont'],
@@ -61,7 +65,7 @@ def parse_params(ver):
     p.add_argument( '-p','--prefix', metavar='<STR>', type=str, required=False,
                     help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
 
-    p.add_argument( '-c','--cpu', metavar='<INT>', type=int, default=1,
+    p.add_argument( '-t','--numthreads', metavar='<INT>', type=int, default=1,
                     help="Number of cpus [default: 1]")
 
     p.add_argument( '-o','--outdir', metavar='[DIR]', type=str, default='.',
@@ -120,7 +124,7 @@ def dependency_check(cmd):
     outs, errs = proc.communicate()
     return outs.decode().rstrip() if proc.returncode == 0 else False
 
-def readMapping( fa, db, cpus, platform, paf, logfile ):
+def contig_mapping( fa, db, cpus, platform, paf, logfile ):
     """
     mapping fa to database
     """
@@ -164,12 +168,13 @@ def timeSpend( start ):
 def get_extra_regions(mask, qstart, qend, qlen, add=None):
     # init bitstring "add" if it's empty
     if not add:
-        add = BitArray( "0b%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)) )
+        add = bitarray( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)) )
+    
     add_mask = add&(mask^add)
     mask = mask|add
     
     p = re.compile('1+')
-    iterator = p.finditer(add_mask.bin)
+    iterator = p.finditer(add_mask.to01())
     
     return (mask, [match.span() for match in iterator])
 
@@ -178,24 +183,26 @@ def aggregate_ctg(ctg_df):
     aggregate alignments
     """
     qlen = ctg_df.iloc[0].qlen.item()
-    ctg_mask = BitArray("0b"+"0"*qlen)
+    ctg_mask = bitarray("0"*qlen)
 
     # aggregate region and find LCA taxonomy
-    df1 = ctg_df.groupby(['ctg','qstart','qend'])['taxid'].aggregate(
-        {'lca_taxid': t.lca_taxid, 'hit_cnt':'count'}
+    ctg_df_agg = ctg_df.groupby(['ctg','qstart','qend']).aggregate(
+        {'taxid': t.lca_taxid, 'match_bp': sum, 'mapping_bp': sum, 'score': 'first', 'tname':'count'}
     )
 
-    df1['lca_rank'] = df1['lca_taxid'].apply(t.taxid2rank)
-    df1['lca_name'] = df1['lca_taxid'].apply(t.taxid2name)
+    ctg_df_agg = ctg_df_agg.rename(columns={'tname':'hit_count','taxid':'lca_taxid'})
 
-    df2 = ctg_df.groupby(['ctg','qstart','qend']).aggregate(
-        {'match_bp': sum, 'mapping_bp': sum, 'score': 'first'}
-    )
+    ctg_df_agg['lca_taxid'] = ctg_df_agg['lca_taxid'].astype(str)
+    ctg_df_agg = ctg_df_agg[ctg_df_agg.lca_taxid != '0']
 
-    ctg_df_agg = pd.concat([df1, df2], axis=1)
+    # sort by score first because we want to process segments with best score first
     ctg_df_agg.sort_values(by=['score','qstart','qend'], ascending=False, inplace=True)
     ctg_df_agg.reset_index(level=['ctg','qstart','qend'], inplace=True)
-    
+
+    # get lca ranks and taxas
+    ctg_df_agg['lca_rank'] = ctg_df_agg['lca_taxid'].apply(t.taxid2rank)
+    ctg_df_agg['lca_name'] = ctg_df_agg['lca_taxid'].apply(t.taxid2name)
+
     ctg_df_agg['qlen'] = qlen
     ctg_df_agg['region'] = np.nan
     ctg_df_agg['agg_len'] = int
@@ -225,16 +232,28 @@ def processPAF(paf, cpus):
     )
     df['ctg'] = df.index
 
-    print_message( "Done.", argvs.silent, begin_t, logfile )
+    print_message( "Done reading PAF file.", argvs.silent, begin_t, logfile )
 
     # sorting by contig, score, then qstart and qend
+    if argvs.debug: print_message( "Sorting mapped segments by mapping scores...", argvs.silent, begin_t, logfile )
+    df['score'] = df['score'].str.replace('s1:i:','').astype(int)
     df.sort_values(by=['ctg', 'score', 'qstart', 'qend'], ascending=False, inplace=True)
+    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     # only keep rows with max score for the same mapped regions
+    if argvs.debug: print_message( "Finding best score for each mapped segment...", argvs.silent, begin_t, logfile )
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
+    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+
+    if argvs.debug: print_message( "Filtering secondary alignments for each segment...", argvs.silent, begin_t, logfile )
     df = df[ df['score']==df['score_max'] ]
+    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+
+    if argvs.debug: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
     df['taxid'] = df['tname'].apply(t.acc2taxid)
-    df['score'] = df['score'].str.replace('s1:i:','').astype(int)
+    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+
+    df = df[df.taxid != 'None'] # dropping alignments with no taxid
 
     #clean memory
     gc.collect()
@@ -244,24 +263,16 @@ def processPAF(paf, cpus):
     jobs = []
     results = []
 
+    ctgnames = df.index.unique().tolist()
+    for ctgname in ctgnames:
+        jobs.append( pool.apply_async(aggregate_ctg, (df.loc[[ctgname]],) ) )
+
+    tol_jobs = len(jobs)
     cnt=0
-    tol_jobs=len(df)
-    for ctgname in df.index.unique().tolist():
-        print(ctgname)
-        results.append( aggregate_ctg(df.loc[[ctgname]]) )
+    for job in jobs:
+        results.append( job.get() )
         cnt+=1
-        if argvs.debug: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
-
-    # for ctgname in df.index.unique().tolist():
-    #     jobs.append( pool.apply_async(aggregate_ctg, df.loc[[ctgname]]) )
-
-    # #wait for all jobs to finish
-    # tol_jobs = len(jobs)
-    # cnt=0
-    # for job in jobs:
-    #     results.append( job.get() )
-    #     cnt+=1
-    #     if argvs.debug: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
+        if argvs.debug and cnt%100==0: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
 
     #clean up
     pool.close()
@@ -273,7 +284,10 @@ if __name__ == '__main__':
     begin_t  = time.time()
     paf      = "%s/%s.paf" % (argvs.outdir, argvs.prefix) if not os.path.exists(argvs.paf) else argvs.paf
     logfile  = "%s/%s.log" % (argvs.outdir, argvs.prefix)
+    outfile  = "%s/%s.tsv" % (argvs.outdir, argvs.prefix)
 
+    if argvs.stdout: outfile = sys.stdout
+    
     #create output directory if not exists
     if not os.path.exists(argvs.outdir):
         os.makedirs(argvs.outdir)
@@ -286,11 +300,19 @@ if __name__ == '__main__':
     # if reads provided
     if argvs.input:
         print_message( "Running minimap2...", argvs.silent, begin_t, logfile )
-        readMapping( argvs.input, argvs.database, argvs.cpu, paf, logfile )
+        contig_mapping( argvs.input, argvs.database, argvs.numthreads, paf, logfile )
         print_message( "Done mapping reads.", argvs.silent, begin_t, logfile )
 
+    # processing PAF
     print_message( "Processing PAF file... ", argvs.silent, begin_t, logfile )
-    dfctg = processPAF(paf, argvs.cpu)
-    print_message( "Done processing PAF file, %s alignment(s)."% (len(dfctg['ctg'].unique().tolist())), argvs.silent, begin_t, logfile )
+    dfctg = processPAF(paf, argvs.numthreads)
+    print_message( "Done processing PAF file.", argvs.silent, begin_t, logfile )
 
-    print(dfctg)
+    dfctg['avg_idt'] = dfctg['match_bp']/dfctg['mapping_bp']
+
+    dfctg.to_csv(
+        outfile,
+        sep='\t',
+        header=True,
+        index=False
+    )
