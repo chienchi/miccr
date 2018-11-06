@@ -13,6 +13,7 @@ import gc
 import re
 import subprocess
 import pandas as pd
+#import dask.dataframe as dd
 import taxonomy as t
 import numpy as np
 import tqdm
@@ -165,25 +166,40 @@ def timeSpend( start ):
     elapsed = done - start
     return time.strftime( "%H:%M:%S", time.gmtime(elapsed) )
 
+# def get_extra_regions(mask, qstart, qend, qlen, add=None):
+#     # init bitstring "add" if it's empty
+#     if not add:
+#         add = bitarray( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)) )
+    
+#     add_mask = add&(mask^add)
+#     mask = mask|add
+    
+#     p = re.compile('1+')
+#     iterator = p.finditer(add_mask.to01())
+    
+#     return (mask, [match.span() for match in iterator])
+
 def get_extra_regions(mask, qstart, qend, qlen, add=None):
     # init bitstring "add" if it's empty
     if not add:
-        add = bitarray( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)) )
+        add = int( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)), 2)
     
     add_mask = add&(mask^add)
     mask = mask|add
     
     p = re.compile('1+')
-    iterator = p.finditer(add_mask.to01())
+    bitstr = bin(add_mask).replace('0b','')
+    bitstr = "0"*(qlen-len(bitstr))+bitstr
+    iterator = p.finditer(bitstr)
     
     return (mask, [match.span() for match in iterator])
-
 def aggregate_ctg(ctg_df):
     """
     aggregate alignments
     """
     qlen = ctg_df.iloc[0].qlen.item()
-    ctg_mask = bitarray("0"*qlen)
+    #ctg_mask = bitarray("0"*qlen)
+    ctg_mask = int(0)
 
     # aggregate region and find LCA taxonomy
     ctg_df_agg = ctg_df.groupby(['ctg','qstart','qend']).aggregate(
@@ -310,9 +326,11 @@ if __name__ == '__main__':
 
     dfctg['avg_idt'] = dfctg['match_bp']/dfctg['mapping_bp']
 
+    print_message( "Writing results... ", argvs.silent, begin_t, logfile )
     dfctg.to_csv(
         outfile,
         sep='\t',
         header=True,
         index=False
     )
+    print_message( "Done.", argvs.silent, begin_t, logfile )
