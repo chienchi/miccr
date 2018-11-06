@@ -166,19 +166,6 @@ def timeSpend( start ):
     elapsed = done - start
     return time.strftime( "%H:%M:%S", time.gmtime(elapsed) )
 
-# def get_extra_regions(mask, qstart, qend, qlen, add=None):
-#     # init bitstring "add" if it's empty
-#     if not add:
-#         add = bitarray( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)) )
-    
-#     add_mask = add&(mask^add)
-#     mask = mask|add
-    
-#     p = re.compile('1+')
-#     iterator = p.finditer(add_mask.to01())
-    
-#     return (mask, [match.span() for match in iterator])
-
 def get_extra_regions(mask, qstart, qend, qlen, add=None):
     # init bitstring "add" if it's empty
     if not add:
@@ -193,49 +180,56 @@ def get_extra_regions(mask, qstart, qend, qlen, add=None):
     iterator = p.finditer(bitstr)
     
     return (mask, [match.span() for match in iterator])
-def aggregate_ctg(ctg_df):
+
+def aggregate_ctg(df, cnames):
     """
     aggregate alignments
     """
-    qlen = ctg_df.iloc[0].qlen.item()
-    #ctg_mask = bitarray("0"*qlen)
-    ctg_mask = int(0)
+    ctg_df_list=[]
 
-    # aggregate region and find LCA taxonomy
-    ctg_df_agg = ctg_df.groupby(['ctg','qstart','qend']).aggregate(
-        {'taxid': t.lca_taxid, 'match_bp': sum, 'mapping_bp': sum, 'score': 'first', 'tname':'count'}
-    )
+    for cname in cnames:
+        ctg_df = df.loc[[cname]]
+        qlen = ctg_df.iloc[0].qlen.item()
+        #ctg_mask = bitarray("0"*qlen)
+        ctg_mask = int(0)
 
-    ctg_df_agg = ctg_df_agg.rename(columns={'tname':'hit_count','taxid':'lca_taxid'})
+        # aggregate region and find LCA taxonomy
+        ctg_df_agg = ctg_df.groupby(['ctg','qstart','qend']).aggregate(
+            {'taxid': t.lca_taxid, 'match_bp': sum, 'mapping_bp': sum, 'score': 'first', 'tname':'count'}
+        )
 
-    ctg_df_agg['lca_taxid'] = ctg_df_agg['lca_taxid'].astype(str)
-    ctg_df_agg = ctg_df_agg[ctg_df_agg.lca_taxid != '0']
+        ctg_df_agg = ctg_df_agg.rename(columns={'tname':'hit_count','taxid':'lca_taxid'})
 
-    # sort by score first because we want to process segments with best score first
-    ctg_df_agg.sort_values(by=['score','qstart','qend'], ascending=False, inplace=True)
-    ctg_df_agg.reset_index(level=['ctg','qstart','qend'], inplace=True)
+        ctg_df_agg['lca_taxid'] = ctg_df_agg['lca_taxid'].astype(str)
+        ctg_df_agg = ctg_df_agg[ctg_df_agg.lca_taxid != '0']
 
-    # get lca ranks and taxas
-    ctg_df_agg['lca_rank'] = ctg_df_agg['lca_taxid'].apply(t.taxid2rank)
-    ctg_df_agg['lca_name'] = ctg_df_agg['lca_taxid'].apply(t.taxid2name)
+        # sort by score first because we want to process segments with best score first
+        ctg_df_agg.sort_values(by=['score','qstart','qend'], ascending=False, inplace=True)
+        ctg_df_agg.reset_index(level=['ctg','qstart','qend'], inplace=True)
 
-    ctg_df_agg['qlen'] = qlen
-    ctg_df_agg['region'] = np.nan
-    ctg_df_agg['agg_len'] = int
+        # get lca ranks and taxas
+        ctg_df_agg['lca_rank'] = ctg_df_agg['lca_taxid'].apply(t.taxid2rank)
+        ctg_df_agg['lca_name'] = ctg_df_agg['lca_taxid'].apply(t.taxid2name)
+
+        ctg_df_agg['qlen'] = qlen
+        ctg_df_agg['region'] = np.nan
+        ctg_df_agg['agg_len'] = int
+        
+        # calculate
+        for i in range(0, len(ctg_df_agg)):
+            qstart = ctg_df_agg.loc[i,'qstart']
+            qend   = ctg_df_agg.loc[i,'qend']
+            (ctg_mask, regions) = get_extra_regions(ctg_mask, qstart, qend, qlen)
+
+            if regions:
+                rlen=0
+                for r in regions: rlen += r[1]-r[0]
+                ctg_df_agg.loc[i,'agg_len'] = rlen
+                ctg_df_agg.loc[i,'region'] = str(regions)
+        
+        ctg_df_list.append(ctg_df_agg.dropna())
     
-    # calculate
-    for i in range(0, len(ctg_df_agg)):
-        qstart = ctg_df_agg.loc[i,'qstart']
-        qend   = ctg_df_agg.loc[i,'qend']
-        (ctg_mask, regions) = get_extra_regions(ctg_mask, qstart, qend, qlen)
-
-        if regions:
-            rlen=0
-            for r in regions: rlen += r[1]-r[0]
-            ctg_df_agg.loc[i,'agg_len'] = rlen
-            ctg_df_agg.loc[i,'region'] = str(regions)
-    
-    return ctg_df_agg.dropna()
+    return pd.concat(ctg_df_list)
 
 def processPAF(paf, cpus):
     df = pd.read_csv(
@@ -279,16 +273,18 @@ def processPAF(paf, cpus):
     jobs = []
     results = []
 
+    n=1500
     ctgnames = df.index.unique().tolist()
-    for ctgname in ctgnames:
-        jobs.append( pool.apply_async(aggregate_ctg, (df.loc[[ctgname]],) ) )
+    chunks = [ctgnames[i:i + n] for i in range(0, len(ctgnames), n)]
+    for chunk in chunks:
+        jobs.append( pool.apply_async(aggregate_ctg, (df,chunk) ) )
 
     tol_jobs = len(jobs)
     cnt=0
     for job in jobs:
         results.append( job.get() )
         cnt+=1
-        if argvs.debug and cnt%100==0: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
+        if argvs.debug: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
 
     #clean up
     pool.close()
