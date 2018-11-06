@@ -4,20 +4,16 @@ __version__   = "0.0.1"
 __date__      = "2018/10/29"
 __copyright__ = "BSD-3"
 
-import argparse as ap
-import textwrap as tw
 import sys
 import os
 import time
 import gc
 import re
+import argparse as ap
 import subprocess
 import pandas as pd
-#import dask.dataframe as dd
 import taxonomy as t
 import numpy as np
-import tqdm
-from bitarray import bitarray
 from multiprocessing import Pool
 
 def parse_params(ver):
@@ -28,7 +24,7 @@ def parse_params(ver):
             # this is the RawTextHelpFormatter._split_lines
             return ap.HelpFormatter._split_lines(self, text, width)
 
-    p = ap.ArgumentParser(prog=sys.argv[0], description="""MInimap2 Contig ClassifieR (MICCR) %s""" % ver, formatter_class=SmartFormatter)
+    p = ap.ArgumentParser(prog=sys.argv[0], description="""MInimap2 Contig ClassifieR (MICCR) %s"""%ver, formatter_class=SmartFormatter)
 
     eg = p.add_mutually_exclusive_group(required=True)
 
@@ -50,33 +46,37 @@ def parse_params(ver):
                     Otherwise, the program will search "database/" in program directory.
                     [default: database/]""")
 
-    p.add_argument( '--stdout', action="store_true",
-                    help="Disable all messages.")
-
     p.add_argument('-x','--platform',
             type=str, default='asm10',
                     choices=['asm5', 'asm10', 'map-pb', 'map-ont'],
                     help="""R|You can specify one of the following platform:\n"""
-                         """"asm5"    : compare mapping results with the background;\n"""
-                         """"asm10"   : score based on uniqueness;\n"""
-                         """"map-pb"  : bg * standalone;\n"""
-                         """"map-ont" : bg * standalone;\n"""
-                         """[default: 'asm10']""" )
-
-    p.add_argument( '-p','--prefix', metavar='<STR>', type=str, required=False,
-                    help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
+                         """"asm5"    : Long assembly to reference mapping (avg divergence < 5%%);\n"""
+                         """"asm10"   : Long assembly to reference mapping (avg divergence < 10%%);\n"""
+                         """"asm20"   : Long assembly to reference mapping (avg divergence < 20%%);\n"""
+                         """"map-pb"  : PacBio/Oxford Nanopore read to reference mapping;\n"""
+                         """"map-ont" : Slightly more sensitive for Oxford Nanopore to reference mapping;\n"""
+                         """[default: 'asm10']""")
 
     p.add_argument( '-t','--numthreads', metavar='<INT>', type=int, default=1,
                     help="Number of cpus [default: 1]")
 
+    p.add_argument( '--stdout', action="store_true",
+                    help="Output to STDOUT [default: False]")
+
     p.add_argument( '-o','--outdir', metavar='[DIR]', type=str, default='.',
                     help="Output directory [default: .]")
+
+    p.add_argument( '-p','--prefix', metavar='<STR>', type=str, required=False,
+                    help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
+
+    p.add_argument( '-mlp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.1,
+                    help="LCA classified segments more than a proportion of contig length [default: 0.1]")
 
     p.add_argument( '--silent', action="store_true",
                     help="Disable all messages.")
 
-    p.add_argument( '--debug', action="store_true",
-                    help="Debug mode. Provide verbose running messages and keep all temporary files.")
+    p.add_argument( '-v','--verbose', action="store_true",
+                    help="Provide verbose running messages.")
 
     args_parsed = p.parse_args()
 
@@ -138,7 +138,7 @@ def contig_mapping( fa, db, cpus, platform, paf, logfile ):
     mp_cmd   = "minimap2 -x %s -t%s %s %s" % (platform, cpus, db, fa)
     cmd      = "%s %s 2>> %s > %s" % (bash_cmd, mp_cmd, logfile, paf)
 
-    if argvs.debug: print_message( "[DEBUG] CMD: %s"%cmd, argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "[DEBUG] CMD: %s"%cmd, argvs.silent, begin_t, logfile )
 
     proc = subprocess.Popen( cmd, shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     outs, errs = proc.communicate()
@@ -167,7 +167,9 @@ def timeSpend( start ):
     return time.strftime( "%H:%M:%S", time.gmtime(elapsed) )
 
 def get_extra_regions(mask, qstart, qend, qlen, add=None):
-    # init bitstring "add" if it's empty
+    """
+    This function will take a contig bitmask
+    """
     if not add:
         add = int( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)), 2)
     
@@ -183,7 +185,9 @@ def get_extra_regions(mask, qstart, qend, qlen, add=None):
 
 def aggregate_ctg(df, cnames):
     """
-    aggregate alignments
+    aggregate alignments to taxonomic annotate contigs
+    argvs: df <pd.DataFrame>, cnames <list>: list of contig indexes
+    return: return a <pd.DataFrame> of annotation results
     """
     ctg_df_list=[]
 
@@ -245,23 +249,23 @@ def processPAF(paf, cpus):
     print_message( "Done reading PAF file.", argvs.silent, begin_t, logfile )
 
     # sorting by contig, score, then qstart and qend
-    if argvs.debug: print_message( "Sorting mapped segments by mapping scores...", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Sorting mapped segments by mapping scores...", argvs.silent, begin_t, logfile )
     df['score'] = df['score'].str.replace('s1:i:','').astype(int)
     df.sort_values(by=['ctg', 'score', 'qstart', 'qend'], ascending=False, inplace=True)
-    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     # only keep rows with max score for the same mapped regions
-    if argvs.debug: print_message( "Finding best score for each mapped segment...", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Finding best score for each mapped segment...", argvs.silent, begin_t, logfile )
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
-    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
-    if argvs.debug: print_message( "Filtering secondary alignments for each segment...", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Filtering secondary alignments for each segment...", argvs.silent, begin_t, logfile )
     df = df[ df['score']==df['score_max'] ]
-    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
-    if argvs.debug: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
     df['taxid'] = df['tname'].apply(t.acc2taxid)
-    if argvs.debug: print_message( "Done.", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     df = df[df.taxid != 'None'] # dropping alignments with no taxid
 
@@ -273,8 +277,9 @@ def processPAF(paf, cpus):
     jobs = []
     results = []
 
-    n=1500
     ctgnames = df.index.unique().tolist()
+    n = 200 if len(ctgnames)/1500 < cpus else 1500
+        
     chunks = [ctgnames[i:i + n] for i in range(0, len(ctgnames), n)]
     for chunk in chunks:
         jobs.append( pool.apply_async(aggregate_ctg, (df,chunk) ) )
@@ -284,19 +289,43 @@ def processPAF(paf, cpus):
     for job in jobs:
         results.append( job.get() )
         cnt+=1
-        if argvs.debug: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
+        if argvs.verbose: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
 
     #clean up
     pool.close()
 
     return pd.concat(results)
 
+def lca_aggregate_ctg(dfctg, minLenProp):
+    #['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
+    lca_dfctg = dfctg[ dfctg['AGG_LENGTH'] > dfctg['LENGTH']*minLenProp ].groupby(['CONTIG']).aggregate({
+        'LENGTH': 'first',
+        'START': min,
+        'END': max,
+        'AGG_LENGTH': sum,
+        'LCA_TAXID': t.lca_taxid,
+        'MATCH_BP': sum,
+        'MAPPING_BP': sum,
+        'HIT_COUNT': sum,
+        'SCORE': max,
+        'REGION': lambda x: "[%s]"%', '.join(x.str.strip('[]'))
+    })
+
+    lca_dfctg['AVG_IDENTITY'] = lca_dfctg['MATCH_BP']/lca_dfctg['MAPPING_BP']
+    lca_dfctg['LCA_RANK'] = lca_dfctg['LCA_TAXID'].apply(t.taxid2rank)
+    lca_dfctg['LCA_NAME'] = lca_dfctg['LCA_TAXID'].apply(t.taxid2name)
+    
+    return lca_dfctg
+
 if __name__ == '__main__':
-    argvs    = parse_params( __version__ )
+    argvs    = parse_params(__version__)
     begin_t  = time.time()
     paf      = "%s/%s.paf" % (argvs.outdir, argvs.prefix) if not argvs.paf else argvs.paf
     logfile  = "%s/%s.log" % (argvs.outdir, argvs.prefix)
-    outfile  = "%s/%s.tsv" % (argvs.outdir, argvs.prefix)
+    outfile_ctg = sys.stdout if argvs.stdout else "%s/%s.ctg.tsv"%(argvs.outdir, argvs.prefix)
+    outfile_lca = sys.stdout if argvs.stdout else "%s/%s.lca_ctg.tsv"%(argvs.outdir, argvs.prefix)
+
+    print_message( "MInimap2 Contig ClassifieR (MICCR) v%s"%__version__, argvs.silent, begin_t, logfile )
 
     if argvs.stdout: outfile = sys.stdout
     
@@ -320,13 +349,31 @@ if __name__ == '__main__':
     dfctg = processPAF(paf, argvs.numthreads)
     print_message( "Done processing PAF file.", argvs.silent, begin_t, logfile )
 
-    dfctg['avg_idt'] = dfctg['match_bp']/dfctg['mapping_bp']
+    # output annotation of contig segments
+    print_message( "Writing contig classification results...", argvs.silent, begin_t, logfile )
+    dfctg['avg_identity'] = dfctg['match_bp']/dfctg['mapping_bp']
+    dfctg = dfctg.rename(columns={'ctg':'contig', 'qstart':'start', 'qend':'end', 'qlen':'length', 'agg_len':'agg_length'})
+    dfctg.columns = dfctg.columns.str.upper()
 
-    print_message( "Writing results... ", argvs.silent, begin_t, logfile )
+    display_cols=['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
+
     dfctg.to_csv(
-        outfile,
+        outfile_ctg,
         sep='\t',
         header=True,
-        index=False
+        index=False,
+        columns=display_cols
+    )
+    print_message( "Done.", argvs.silent, begin_t, logfile )
+    
+    # output LCA of contig
+    print_message( "Writing contig LCA classification results...", argvs.silent, begin_t, logfile )
+    lca_dfctg = lca_aggregate_ctg(dfctg, argvs.minLcaProp)
+    lca_dfctg.to_csv(
+        outfile_lca,
+        sep='\t',
+        header=True,
+        index=True,
+        columns=display_cols[1:]
     )
     print_message( "Done.", argvs.silent, begin_t, logfile )
