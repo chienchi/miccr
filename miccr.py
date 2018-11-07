@@ -245,17 +245,11 @@ def processPAF(paf, cpus):
         usecols=['qname','qlen','qstart','qend','strand','tname','tlen','tstart','tend','match_bp','mapping_bp','score'],
     )
     df['ctg'] = df.index
-
-    print_message( "Done reading PAF file.", argvs.silent, begin_t, logfile )
-
-    # sorting by contig, score, then qstart and qend
-    if argvs.verbose: print_message( "Sorting mapped segments by mapping scores...", argvs.silent, begin_t, logfile )
-    df['score'] = df['score'].str.replace('s1:i:','').astype(int)
-	#df.sort_values(by=['ctg', 'score', 'qstart', 'qend'], ascending=False, inplace=True)
-    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
+    print_message( "Done loading PAF file.", argvs.silent, begin_t, logfile )
 
     # only keep rows with max score for the same mapped regions
     if argvs.verbose: print_message( "Finding best score for each mapped segment...", argvs.silent, begin_t, logfile )
+    df['score'] = df['score'].str.replace('s1:i:','').astype(int)
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
     if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
@@ -272,7 +266,7 @@ def processPAF(paf, cpus):
     #clean memory
     gc.collect()
 
-    print_message( "Arggregating alignments using %s subprocesses..."%cpus, argvs.silent, begin_t, logfile )
+    print_message( "Aggregating alignments using %s subprocesses..."%cpus, argvs.silent, begin_t, logfile )
     pool = Pool(processes=cpus)
     jobs = []
     results = []
