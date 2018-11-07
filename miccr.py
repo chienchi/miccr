@@ -20,7 +20,7 @@ def parse_params(ver):
     class SmartFormatter(ap.HelpFormatter):
         def _split_lines(self, text, width):
             if text.startswith('R|'):
-                return text[2:].splitlines()  
+                return text[2:].splitlines() 
             # this is the RawTextHelpFormatter._split_lines
             return ap.HelpFormatter._split_lines(self, text, width)
 
@@ -28,13 +28,13 @@ def parse_params(ver):
 
     eg = p.add_mutually_exclusive_group(required=True)
 
-    eg.add_argument('-i', '--input', 
-            metavar='[FASTQ]', type=str,
-                    help="Input one or multiple FASTQ file(s). Use space to separate multiple input files.")
+    eg.add_argument('-i', '--input',
+            metavar='[FASTA]', type=str,
+                    help="Input one or multiple contig files in FASTA format. Use space to separate multiple input files.")
 
-    eg.add_argument('-f', '--paf', 
+    eg.add_argument('-f', '--paf',
             metavar='[PAF]', type=str,
-                    help="Input one PAF file.")
+                    help="Input a Minimap2 PAF file.")
 
     p.add_argument('-d', '--database',
             metavar='[FASTA/MMI]', type=str, nargs=1,
@@ -251,7 +251,7 @@ def processPAF(paf, cpus):
     # sorting by contig, score, then qstart and qend
     if argvs.verbose: print_message( "Sorting mapped segments by mapping scores...", argvs.silent, begin_t, logfile )
     df['score'] = df['score'].str.replace('s1:i:','').astype(int)
-    df.sort_values(by=['ctg', 'score', 'qstart', 'qend'], ascending=False, inplace=True)
+	#df.sort_values(by=['ctg', 'score', 'qstart', 'qend'], ascending=False, inplace=True)
     if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     # only keep rows with max score for the same mapped regions
