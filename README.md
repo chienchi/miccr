@@ -1,5 +1,6 @@
 ## MInimap2 Contig ClassifieR (MICCR)
 
+```
 usage: ./miccr.py [-h] (-i [FASTA] | -f [PAF]) [-d [FASTA/MMI]] [-dp [PATH]]
                   [-x {asm5,asm10,map-pb,map-ont}] [-t <INT>] [--stdout]
                   [-o [DIR]] [-p <STR>] [-mlp <FLOAT>] [--silent] [-v]
@@ -42,3 +43,4 @@ optional arguments:
                         contig length [default: 0.1]
   --silent              Disable all messages.
   -v, --verbose         Provide verbose running messages.
+```
