@@ -1,5 +1,12 @@
 ## MInimap2 Contig ClassifieR (MICCR)
 
+Taxonomically classify contigs by mapping sequences to reference genomes using minimap2.
+
+### REQUIREMENTS
+* python >= 3.0
+* pandas >= 0.23.0
+
+### USAGE
 ```
 usage: ./miccr.py [-h] (-i [FASTA] | -f [PAF]) [-d [FASTA/MMI]] [-dp [PATH]]
                   [-x {asm5,asm10,map-pb,map-ont}] [-t <INT>] [--stdout]
