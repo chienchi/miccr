@@ -11,10 +11,12 @@ import gc
 import re
 import argparse as ap
 import subprocess
-import pandas as pd
 import taxonomy as t
 import numpy as np
 from multiprocessing import Pool
+import pkg_resources
+pkg_resources.require("pandas>=0.23.0")
+import pandas as pd
 
 def parse_params(ver):
     class SmartFormatter(ap.HelpFormatter):
@@ -34,7 +36,7 @@ def parse_params(ver):
 
     eg.add_argument('-f', '--paf',
             metavar='[PAF]', type=str,
-                    help="Input a Minimap2 PAF file.")
+                    help="Input a PAF alignment file.")
 
     p.add_argument('-d', '--database',
             metavar='[FASTA/MMI]', type=str, nargs=1,
@@ -60,7 +62,7 @@ def parse_params(ver):
     p.add_argument( '-t','--numthreads', metavar='<INT>', type=int, default=1,
                     help="Number of cpus [default: 1]")
 
-    p.add_argument( '--stdout', action="store_true",
+    p.add_argument( '-c','--stdout', action="store_true",
                     help="Output to STDOUT [default: False]")
 
     p.add_argument( '-o','--outdir', metavar='[DIR]', type=str, default='.',
@@ -69,7 +71,7 @@ def parse_params(ver):
     p.add_argument( '-p','--prefix', metavar='<STR>', type=str, required=False,
                     help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
 
-    p.add_argument( '-mlp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.1,
+    p.add_argument( '-m','--minLcaProp', metavar='<FLOAT>', type=float, default=0.1,
                     help="LCA classified segments more than a proportion of contig length [default: 0.1]")
 
     p.add_argument( '--silent', action="store_true",
@@ -127,7 +129,7 @@ def dependency_check(cmd):
 
 def contig_mapping( fa, db, cpus, platform, paf, logfile ):
     """
-    mapping fa to database
+    mapping contig sequences to database using minimap2
     """
     sam_list = []
     num_input_contigs = 0
@@ -168,7 +170,8 @@ def timeSpend( start ):
 
 def get_extra_regions(mask, qstart, qend, qlen, add=None):
     """
-    This function will take a contig bitmask
+    Take a bitmask of a contig, a given alignment region (or in bitmask). This function
+    will return combined bitmask and additional covered regions.
     """
     if not add:
         add = int( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)), 2)
@@ -248,20 +251,16 @@ def processPAF(paf, cpus):
     print_message( "Done loading PAF file.", argvs.silent, begin_t, logfile )
 
     # only keep rows with max score for the same mapped regions
-    if argvs.verbose: print_message( "Finding best score for each mapped segment...", argvs.silent, begin_t, logfile )
+    if argvs.verbose: print_message( "Filtering out secondary alignments for each mapped segment...", argvs.silent, begin_t, logfile )
     df['score'] = df['score'].str.replace('s1:i:','').astype(int)
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
-    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
-
-    if argvs.verbose: print_message( "Filtering secondary alignments for each segment...", argvs.silent, begin_t, logfile )
     df = df[ df['score']==df['score_max'] ]
     if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     if argvs.verbose: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
     df['taxid'] = df['tname'].apply(t.acc2taxid)
-    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
-
     df = df[df.taxid != 'None'] # dropping alignments with no taxid
+    if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     #clean memory
     gc.collect()
@@ -273,8 +272,8 @@ def processPAF(paf, cpus):
 
     ctgnames = df.index.unique().tolist()
     n = 200 if len(ctgnames)/1500 < cpus else 1500
-        
     chunks = [ctgnames[i:i + n] for i in range(0, len(ctgnames), n)]
+
     for chunk in chunks:
         jobs.append( pool.apply_async(aggregate_ctg, (df,chunk) ) )
 
@@ -283,7 +282,7 @@ def processPAF(paf, cpus):
     for job in jobs:
         results.append( job.get() )
         cnt+=1
-        if argvs.verbose: print_message( "[DEBUG] Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
+        if argvs.verbose: print_message( "Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
 
     #clean up
     pool.close()
@@ -320,8 +319,6 @@ if __name__ == '__main__':
     outfile_lca = sys.stdout if argvs.stdout else "%s/%s.lca_ctg.tsv"%(argvs.outdir, argvs.prefix)
 
     print_message( "MInimap2 Contig ClassifieR (MICCR) v%s"%__version__, argvs.silent, begin_t, logfile )
-
-    if argvs.stdout: outfile = sys.stdout
     
     #create output directory if not exists
     if not os.path.exists(argvs.outdir):
