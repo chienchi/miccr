@@ -9,6 +9,7 @@ import os
 import time
 import gc
 import re
+import random
 import argparse as ap
 import subprocess
 import taxonomy as t
@@ -22,7 +23,7 @@ def parse_params(ver):
     class SmartFormatter(ap.HelpFormatter):
         def _split_lines(self, text, width):
             if text.startswith('R|'):
-                return text[2:].splitlines() 
+                return text[2:].splitlines()
             # this is the RawTextHelpFormatter._split_lines
             return ap.HelpFormatter._split_lines(self, text, width)
 
@@ -68,11 +69,14 @@ def parse_params(ver):
     p.add_argument( '-o','--outdir', metavar='[DIR]', type=str, default='.',
                     help="Output directory [default: .]")
 
-    p.add_argument( '-p','--prefix', metavar='<STR>', type=str, required=False,
+    p.add_argument( '-p','--prefix', metavar='<STR>', type=str, default=None,
                     help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
 
-    p.add_argument( '-m','--minLcaProp', metavar='<FLOAT>', type=float, default=0.1,
-                    help="LCA classified segments more than a proportion of contig length [default: 0.1]")
+    p.add_argument( '-mp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.02,
+                    help="Classify contigs by finding LCA of mapped segments > specified proportion of contig length")
+
+    p.add_argument( '-if','--iqrfactor', metavar='<FLOAT>', type=float, default=1,
+                    help="Specify a facter (f). Classify mapped segments with agg_len > Q1+f*IQR, where IQR=(Q3-Q1). [default: 1]")
 
     p.add_argument( '--silent', action="store_true",
                     help="Disable all messages.")
@@ -112,10 +116,10 @@ def parse_params(ver):
 
     if not args_parsed.prefix:
         if args_parsed.input:
-            name = re.search('([^\/\.]+)\..*$', args_parsed.input[0] )
+            name = re.search('([^\/\.]+)\..*$', args_parsed.input )
             args_parsed.prefix = name.group(1)
         elif args_parsed.paf:
-            name = re.search('([^\/]+).\w+.\w+$', args_parsed.paf )
+            name = re.search('([^\/]+)\.\w+$', args_parsed.paf )
             args_parsed.prefix = name.group(1)
         else:
             args_parsed.prefix = "miccr"
@@ -137,7 +141,7 @@ def contig_mapping( fa, db, cpus, platform, paf, logfile ):
     print_message( "Mapping to %s..." % db, argvs.silent, begin_t, logfile )
 
     bash_cmd = "set -o pipefail; set -x;"
-    mp_cmd   = "minimap2 -x %s -t%s %s %s" % (platform, cpus, db, fa)
+    mp_cmd   = "minimap2 --secondary=yes -x %s -t%s %s %s" % (platform, cpus, db, fa)
     cmd      = "%s %s 2>> %s > %s" % (bash_cmd, mp_cmd, logfile, paf)
 
     if argvs.verbose: print_message( "[DEBUG] CMD: %s"%cmd, argvs.silent, begin_t, logfile )
@@ -157,7 +161,7 @@ def print_message(msg, silent, start, logfile, errorout=0):
     with open( logfile, "a" ) as f:
         f.write( message )
         f.close()
-    
+
     if errorout:
         sys.exit( message )
     elif not silent:
@@ -175,15 +179,15 @@ def get_extra_regions(mask, qstart, qend, qlen, add=None):
     """
     if not add:
         add = int( "%s%s%s"%("0"*qstart, "1"*(qend-qstart), "0"*(qlen-qend)), 2)
-    
+
     add_mask = add&(mask^add)
     mask = mask|add
-    
+
     p = re.compile('1+')
     bitstr = bin(add_mask).replace('0b','')
     bitstr = "0"*(qlen-len(bitstr))+bitstr
     iterator = p.finditer(bitstr)
-    
+
     return (mask, [match.span() for match in iterator])
 
 def aggregate_ctg(df, cnames):
@@ -221,7 +225,7 @@ def aggregate_ctg(df, cnames):
         ctg_df_agg['qlen'] = qlen
         ctg_df_agg['region'] = np.nan
         ctg_df_agg['agg_len'] = int
-        
+
         # calculate
         for i in range(0, len(ctg_df_agg)):
             qstart = ctg_df_agg.loc[i,'qstart']
@@ -233,9 +237,9 @@ def aggregate_ctg(df, cnames):
                 for r in regions: rlen += r[1]-r[0]
                 ctg_df_agg.loc[i,'agg_len'] = rlen
                 ctg_df_agg.loc[i,'region'] = str(regions)
-        
+
         ctg_df_list.append(ctg_df_agg.dropna())
-    
+
     return pd.concat(ctg_df_list)
 
 def processPAF(paf, cpus):
@@ -271,7 +275,8 @@ def processPAF(paf, cpus):
     results = []
 
     ctgnames = df.index.unique().tolist()
-    n = 200 if len(ctgnames)/1500 < cpus else 1500
+    random.shuffle(ctgnames)
+    n = 50 if len(ctgnames)/500 < cpus else 500
     chunks = [ctgnames[i:i + n] for i in range(0, len(ctgnames), n)]
 
     for chunk in chunks:
@@ -289,9 +294,17 @@ def processPAF(paf, cpus):
 
     return pd.concat(results)
 
-def lca_aggregate_ctg(dfctg, minLenProp):
+def lca_aggregate_ctg(dfctg, minLcaProp, iqrfactor):
     #['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
-    lca_dfctg = dfctg[ dfctg['AGG_LENGTH'] > dfctg['LENGTH']*minLenProp ].groupby(['CONTIG']).aggregate({
+    dfctg = dfctg[ dfctg.AGG_LENGTH >= (minLcaProp*dfctg.LENGTH) ].copy()
+	#pd.options.mode.chained_assignment = None
+    dfctg['Q1'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.25))
+    dfctg['Q3'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.75))
+    dfctg['IQR'] = dfctg['Q3']-dfctg['Q1']
+
+    dfctg_filtered = dfctg[ dfctg['AGG_LENGTH'] >= (dfctg['Q1']+iqrfactor*dfctg['IQR']) ]
+
+    lca_dfctg = dfctg_filtered.groupby(['CONTIG']).aggregate({
         'LENGTH': 'first',
         'START': min,
         'END': max,
@@ -300,14 +313,14 @@ def lca_aggregate_ctg(dfctg, minLenProp):
         'MATCH_BP': sum,
         'MAPPING_BP': sum,
         'HIT_COUNT': sum,
-        'SCORE': max,
-        'REGION': lambda x: "[%s]"%', '.join(x.str.strip('[]'))
+        'BEST_ALN_SCORE': max,
+		#'REGION': lambda x: "[%s]"%', '.join(x.str.strip('[]'))
     })
 
     lca_dfctg['AVG_IDENTITY'] = lca_dfctg['MATCH_BP']/lca_dfctg['MAPPING_BP']
     lca_dfctg['LCA_RANK'] = lca_dfctg['LCA_TAXID'].apply(t.taxid2rank)
     lca_dfctg['LCA_NAME'] = lca_dfctg['LCA_TAXID'].apply(t.taxid2name)
-    
+
     return lca_dfctg
 
 if __name__ == '__main__':
@@ -319,7 +332,7 @@ if __name__ == '__main__':
     outfile_lca = sys.stdout if argvs.stdout else "%s/%s.lca_ctg.tsv"%(argvs.outdir, argvs.prefix)
 
     print_message( "MInimap2 Contig ClassifieR (MICCR) v%s"%__version__, argvs.silent, begin_t, logfile )
-    
+
     #create output directory if not exists
     if not os.path.exists(argvs.outdir):
         os.makedirs(argvs.outdir)
@@ -343,28 +356,30 @@ if __name__ == '__main__':
     # output annotation of contig segments
     print_message( "Writing contig classification results...", argvs.silent, begin_t, logfile )
     dfctg['avg_identity'] = dfctg['match_bp']/dfctg['mapping_bp']
-    dfctg = dfctg.rename(columns={'ctg':'contig', 'qstart':'start', 'qend':'end', 'qlen':'length', 'agg_len':'agg_length'})
+    dfctg = dfctg.rename(columns={'ctg':'contig', 'qstart':'start', 'qend':'end', 'qlen':'length', 'agg_len':'agg_length', 'score':'best_aln_score'})
     dfctg.columns = dfctg.columns.str.upper()
 
-    display_cols=['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
-
+    display_cols=['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','BEST_ALN_SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
     dfctg.to_csv(
         outfile_ctg,
         sep='\t',
         header=True,
         index=False,
+        float_format='%.4f',
         columns=display_cols
     )
     print_message( "Done.", argvs.silent, begin_t, logfile )
-    
+
     # output LCA of contig
+    print_message( "Calculating LCA classification results...", argvs.silent, begin_t, logfile )
+    lca_dfctg = lca_aggregate_ctg(dfctg, argvs.minLcaProp, argvs.iqrfactor)
     print_message( "Writing contig LCA classification results...", argvs.silent, begin_t, logfile )
-    lca_dfctg = lca_aggregate_ctg(dfctg, argvs.minLcaProp)
     lca_dfctg.to_csv(
         outfile_lca,
         sep='\t',
         header=True,
         index=True,
-        columns=display_cols[1:]
+        float_format='%.4f',
+		columns=display_cols[1:-1]
     )
     print_message( "Done.", argvs.silent, begin_t, logfile )

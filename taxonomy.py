@@ -142,6 +142,9 @@ def taxid2rank( taxID, guess_strain=True ):
 
 def taxid2name( taxID ):
 	taxID = _checkTaxonomy( taxID )
+	if not taxID in taxNames:
+		return "na"
+
 	return _getTaxName(taxID)
 
 def taxid2depth( taxID ):
