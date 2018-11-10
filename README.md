@@ -10,7 +10,7 @@ Taxonomically classify contigs by mapping sequences to reference genomes using m
 ```
 usage: ./miccr.py [-h] (-i [FASTA] | -f [PAF]) [-d [FASTA/MMI]] [-dp [PATH]]
                   [-x {asm5,asm10,map-pb,map-ont}] [-t <INT>] [-c] [-o [DIR]]
-                  [-p <STR>] [-m <FLOAT>] [--silent] [-v]
+                  [-p <STR>] [-mp <FLOAT>] [-if <FLOAT>] [--silent] [-v]
 
 MInimap2 Contig ClassifieR (MICCR) 0.0.1
 
@@ -45,9 +45,13 @@ optional arguments:
   -p <STR>, --prefix <STR>
                         Prefix of the output file [default:
                         <INPUT_FILE_PREFIX>]
-  -m <FLOAT>, --minLcaProp <FLOAT>
-                        LCA classified segments more than a proportion of
-                        contig length [default: 0.1]
+  -mp <FLOAT>, --minLcaProp <FLOAT>
+                        Classify contigs by finding LCA of mapped segments >
+                        specified proportion of contig length
+  -if <FLOAT>, --iqrfactor <FLOAT>
+                        Specify a facter (f). Classify mapped segments with
+                        agg_len > Q1+f*IQR, where Q1/3=first/third quartile of
+                        agg_len and IQR=(Q3-Q1). [default: 1]
   --silent              Disable all messages.
   -v, --verbose         Provide verbose running messages.
-  ```
+```
