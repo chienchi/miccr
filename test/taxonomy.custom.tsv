@@ -1,0 +1,7 @@
+1	1	1	root	root
+10239	1	1	superkingdom	Viruses
+35237	2	10239	phylum	dsDNA viruses, no RNA stage
+10240	1	35237	order	Poxviridae
+10241	1	10240	family	Chordopoxvirinae
+10242	1	10241	genus	Orthopoxvirus
+10245	1	10242	species	Vaccinia virus
