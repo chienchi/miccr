@@ -1,10 +1,31 @@
 ## MInimap2 Contig ClassifieR (MICCR)
 
-Taxonomically classify contigs by mapping sequences to reference genomes using minimap2.
+MICCR is a taxonomically classifier for contigs that leverage minimap2 to map sequences to a reference genome database.
+Based on the mapping results, MICCR annotated the mapped regions of a contig by analyzing LCA taxonomy from the best hits.
 
 ### REQUIREMENTS
 * python >= 3.0
 * pandas >= 0.23.0
+
+### RESULTS
+
+MICCR provides two tsv files `PREFIX.ctg.tsv` and `PREFIX.lca_ctg.tsv`.
+The '.ctg.tsv' has all 11 columns below to show all of taxonomic annotation regions by regions.
+The '.lca_ctg.tsv' includes first 10 columns below to display the LCA results of qualified regions in each contig.
+
+| COLUMN | NAME         | DESCRIPTION                                                         |
+|--------|--------------|---------------------------------------------------------------------|
+| 1      | CONTIG       | Name of the contig                                                  |
+| 2      | LENGTH       | Length of the contig                                                |
+| 3      | START        | Start position of taxonomic annotated region (0-based)              |
+| 4      | END          | End position of taxonomic annotated region                          |
+| 5      | LCA_TAXID    | LCA taxonomy ID of all qualified alignments mapped to this region   |
+| 6      | LCA_RANK     | LCA taxonomy rank of all qualified alignments mapped to this region |
+| 7      | LCA_NAME     | LCA taxonomy name of all qualified alignments mapped to this region |
+| 8      | HIT_COUNT    | Number of accounted alignments                                      |
+| 9      | AGG_LENGTH   | Additional annotated length this mapped region can provide          |
+| 10     | AVG_IDENTITY | Approximate mapping identity based on minimap2                      |
+| 11     | AGG_REGION   | Start and end positions of additional annotated length              |
 
 ### USAGE
 ```

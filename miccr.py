@@ -295,9 +295,9 @@ def processPAF(paf, cpus):
     return pd.concat(results)
 
 def lca_aggregate_ctg(dfctg, minLcaProp, iqrfactor):
-    #['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
+    #['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','AGG_REGION']
     dfctg = dfctg[ dfctg.AGG_LENGTH >= (minLcaProp*dfctg.LENGTH) ].copy()
-	#pd.options.mode.chained_assignment = None
+    #pd.options.mode.chained_assignment = None
     dfctg['Q1'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.25))
     dfctg['Q3'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.75))
     dfctg['IQR'] = dfctg['Q3']-dfctg['Q1']
@@ -314,7 +314,7 @@ def lca_aggregate_ctg(dfctg, minLcaProp, iqrfactor):
         'MAPPING_BP': sum,
         'HIT_COUNT': sum,
         'BEST_ALN_SCORE': max,
-		#'REGION': lambda x: "[%s]"%', '.join(x.str.strip('[]'))
+        #'REGION': lambda x: "[%s]"%', '.join(x.str.strip('[]'))
     })
 
     lca_dfctg['AVG_IDENTITY'] = lca_dfctg['MATCH_BP']/lca_dfctg['MAPPING_BP']
@@ -356,10 +356,10 @@ if __name__ == '__main__':
     # output annotation of contig segments
     print_message( "Writing contig classification results...", argvs.silent, begin_t, logfile )
     dfctg['avg_identity'] = dfctg['match_bp']/dfctg['mapping_bp']
-    dfctg = dfctg.rename(columns={'ctg':'contig', 'qstart':'start', 'qend':'end', 'qlen':'length', 'agg_len':'agg_length', 'score':'best_aln_score'})
+    dfctg = dfctg.rename(columns={'ctg':'contig', 'qstart':'start', 'qend':'end', 'qlen':'length', 'agg_len':'agg_length', 'score':'best_aln_score', 'region':'agg_region'})
     dfctg.columns = dfctg.columns.str.upper()
 
-    display_cols=['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','BEST_ALN_SCORE','AGG_LENGTH','AVG_IDENTITY','REGION']
+    display_cols=['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','BEST_ALN_SCORE','AGG_LENGTH','AVG_IDENTITY','AGG_REGION']
     dfctg.to_csv(
         outfile_ctg,
         sep='\t',
