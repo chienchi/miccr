@@ -73,10 +73,10 @@ def parse_params(ver):
                     help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
 
     p.add_argument( '-mp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.02,
-                    help="Classify contigs by finding LCA of mapped segments > specified proportion of contig length")
+                    help="Classify contigs by finding LCA of mapped segments > specified proportion of contig length [default: 0.02]")
 
     p.add_argument( '-if','--iqrfactor', metavar='<FLOAT>', type=float, default=1,
-                    help="Specify a facter (f). Classify mapped segments with agg_len > Q1+f*IQR, where Q1/3=first/third quartile of agg_len and IQR=(Q3-Q1). [default: 1]")
+                    help="Specify a facter (f). Classify mapped segments with agg_len >= Q1+f*IQR, where Q1/3=first/third quartile of agg_len and IQR=(Q3-Q1). [default: 1]")
 
     p.add_argument( '--silent', action="store_true",
                     help="Disable all messages.")
