@@ -6,6 +6,10 @@ before_script:
 functional tests:
   image: continuumio/miniconda3
   script:
+# testing taxonomy.py
+    - echo 10245 > test_taxid.txt
+    - coverage run -p ../taxonomy.py . ./taxonomy.custom.tsv < test_taxid.txt
+# testing miccr.py
     - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i Refseq_viruses.fa   -p TEST_1 -v
     - coverage run -p ../miccr.py -d ./Refseq_viruses.fa.mmi -i Refseq_viruses.fa   -p TEST_2 -v
     - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i Refseq_viruses.fa   -p TEST_3 -v  -x asm5    
