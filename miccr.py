@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 __author__    = "Po-E (Paul) Li, Bioscience Division, Los Alamos National Laboratory"
-__version__   = "0.0.1"
+__version__   = "0.0.2"
 __date__      = "2018/10/29"
 __copyright__ = "BSD-3"
 
@@ -72,11 +72,14 @@ def parse_params(ver):
     p.add_argument( '-p','--prefix', metavar='<STR>', type=str, default=None,
                     help="Prefix of the output file [default: <INPUT_FILE_PREFIX>]")
 
-    p.add_argument( '-mp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.02,
-                    help="Classify contigs by finding LCA of mapped segments > specified proportion of contig length [default: 0.02]")
+    p.add_argument( '-sc','--SkipCumsumLcaProp', metavar='<FLOAT>', type=float, default=0.6,
+                    help="[LCA options] For each contig, consider a segment qualified for LCA when the cumulative AGG_LENGTH < specified proportion of contig length")
 
-    p.add_argument( '-if','--iqrfactor', metavar='<FLOAT>', type=float, default=1,
-                    help="Specify a facter (f). Classify mapped segments for each contig with AGG_LENGTH >= Q1+f*IQR, where Q1/3=first/third quartile of AGG_LENGTH and IQR=(Q3-Q1) [default: 1]")
+    p.add_argument( '-mp','--minLcaProp', metavar='<FLOAT>', type=float, default=0.02,
+                    help="[LCA options] For each contig, consider a segment qualified for LCA if AGG_LENGTH > specified proportion of contig length")
+
+    p.add_argument( '-if','--iqrfactor', metavar='<FLOAT>', type=float, default=0.5,
+                    help="[LCA options] Specify a facter (f). Classify qualified segments which AGG_LENGTH > Q1+f*IQR, where Q1/3=first/third quartile of AGG_LENGTH and IQR=(Q3-Q1). [default: 0.5]")
 
     p.add_argument( '--silent', action="store_true",
                     help="Disable all messages.")
@@ -294,15 +297,26 @@ def processPAF(paf, cpus):
 
     return pd.concat(results)
 
-def lca_aggregate_ctg(dfctg, minLcaProp, iqrfactor):
-    #['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','AGG_REGION']
-    dfctg = dfctg[ dfctg.AGG_LENGTH >= (minLcaProp*dfctg.LENGTH) ].copy()
-    #pd.options.mode.chained_assignment = None
+def lca_aggregate_ctg(dfctg, skipCumsumLcaProp, minLcaProp, iqrfactor):
+    """
+    Find a merged classification result for each contig using LCA.
+    dfctg:
+    ['CONTIG','LENGTH','START','END','LCA_TAXID','LCA_RANK','LCA_NAME','HIT_COUNT','SCORE','AGG_LENGTH','AVG_IDENTITY','AGG_REGION']
+    """
+    # calculating AGG_LENGTH cumsum for each CONTIG
+    dfctg['AGG_LENGTH'] = dfctg['AGG_LENGTH'].astype('int64')
+    dfctg = dfctg.reset_index().sort_values(['CONTIG','AGG_LENGTH'], ascending=False).set_index(['CONTIG'])
+    dfctg['AGG_LENGTH_CUMSUM'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].cumsum()
+
+    dfctg = dfctg[ (dfctg.AGG_LENGTH >= minLcaProp*dfctg.LENGTH) &
+                   ((dfctg.AGG_LENGTH >= skipCumsumLcaProp*dfctg.LENGTH) |
+                    (dfctg.AGG_LENGTH_CUMSUM <= skipCumsumLcaProp*dfctg.LENGTH)) ].copy()
+
     dfctg['Q1'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.25))
     dfctg['Q3'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.75))
     dfctg['IQR'] = dfctg['Q3']-dfctg['Q1']
 
-    dfctg_filtered = dfctg[ dfctg['AGG_LENGTH'] >= (dfctg['Q1']+iqrfactor*dfctg['IQR']) ]
+    dfctg_filtered = dfctg[ dfctg['AGG_LENGTH'] >= dfctg['Q1']+iqrfactor*dfctg['IQR'] ]
 
     lca_dfctg = dfctg_filtered.groupby(['CONTIG']).aggregate({
         'LENGTH': 'first',
@@ -372,7 +386,7 @@ if __name__ == '__main__':
 
     # output LCA of contig
     print_message( "Calculating LCA classification results...", argvs.silent, begin_t, logfile )
-    lca_dfctg = lca_aggregate_ctg(dfctg, argvs.minLcaProp, argvs.iqrfactor)
+    lca_dfctg = lca_aggregate_ctg(dfctg, argvs.SkipCumsumLcaProp, argvs.minLcaProp, argvs.iqrfactor)
     print_message( "Writing contig LCA classification results...", argvs.silent, begin_t, logfile )
     lca_dfctg.to_csv(
         outfile_lca,
