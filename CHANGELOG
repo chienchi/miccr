@@ -1,0 +1,6 @@
+v0.0.2
+* added '--SkipCumsumLcaProp' option for more flexible LCA results
+* removed the 'AGG_REGION' column from lca_ctg results
+
+v0.0.1
+* init release

@@ -34,9 +34,10 @@ The '.lca_ctg.tsv' includes first 10 columns below to display the LCA results of
 ```
 usage: ./miccr.py [-h] (-i [FASTA] | -f [PAF]) [-d [FASTA/MMI]] [-dp [PATH]]
                   [-x {asm5,asm10,map-pb,map-ont}] [-t <INT>] [-c] [-o [DIR]]
-                  [-p <STR>] [-mp <FLOAT>] [-if <FLOAT>] [--silent] [-v]
+                  [-p <STR>] [-sc <FLOAT>] [-mp <FLOAT>] [-if <FLOAT>]
+                  [--silent] [-v]
 
-MInimap2 Contig ClassifieR (MICCR) 0.0.1
+MInimap2 Contig ClassifieR (MICCR) 0.0.2
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -69,13 +70,19 @@ optional arguments:
   -p <STR>, --prefix <STR>
                         Prefix of the output file [default:
                         <INPUT_FILE_PREFIX>]
-  -mp <FLOAT>, --minLcaProp <FLOAT>
-                        Classify contigs by finding LCA of mapped segments >
+  -sc <FLOAT>, --SkipCumsumLcaProp <FLOAT>
+                        [LCA options] For each contig, consider a segment
+                        qualified for LCA when the cumulative AGG_LENGTH <
                         specified proportion of contig length
+  -mp <FLOAT>, --minLcaProp <FLOAT>
+                        [LCA options] For each contig, consider a segment
+                        qualified for LCA if AGG_LENGTH > specified proportion
+                        of contig length
   -if <FLOAT>, --iqrfactor <FLOAT>
-                        Specify a facter (f). Classify mapped segments with
-                        agg_len > Q1+f*IQR, where Q1/3=first/third quartile of
-                        agg_len and IQR=(Q3-Q1). [default: 1]
+                        [LCA options] Specify a facter (f). Classify qualified
+                        segments which AGG_LENGTH > Q1+f*IQR, where
+                        Q1/3=first/third quartile of AGG_LENGTH and
+                        IQR=(Q3-Q1). [default: 0.5]
   --silent              Disable all messages.
   -v, --verbose         Provide verbose running messages.
 ```
