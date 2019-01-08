@@ -1,4 +1,4 @@
-## Utility Scripts to generate the classification result. 
+## Utility Scripts to generate the classification result graphs. 
 
 ### Usage:
 
