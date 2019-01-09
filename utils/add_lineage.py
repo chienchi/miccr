@@ -5,7 +5,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import taxonomy as t
 
-import sys;
 t.loadTaxonomy( sys.argv[1] )
 
 # ctg.tsv
