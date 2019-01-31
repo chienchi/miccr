@@ -27,7 +27,7 @@ def.par <- par(no.readonly = TRUE) # default
 if (file.exists(cov_table_file)){
 	cov_table<-read.table(file=cov_table_file,header=TRUE)
 }
-taxa_table<-read.table(file=classified_result_table,header=TRUE,sep="\t",comment.char="",quote="")
+taxa_table<-read.table(file=classified_result_table,header=TRUE,sep="\t",comment.char="",quote="", na.strings=c(""," ","NA"))
 
 if (length(which(taxa_table$RANK=="LCA_RANK"))>0)
 {
@@ -65,7 +65,7 @@ for ( i in 1:7) {
 	# adjust species level margin space for long species name
 	if(i>6){margin_adj<-2}
   	# select subset by rank
-	data.rank <- taxa_table[taxa_table[ranklist[i]] != '',  ]
+	data.rank <- taxa_table[! is.na(taxa_table[ranklist[i]]),  ]
 	#data.rank <- subset(taxa_table, (RANK == ranklist[i] | RANK == "unclassified") & AGG_LENGTH > 0)
   	
   	# sum acc_cov_len by organism group
