@@ -7,6 +7,7 @@ Based on the mapping results, MICCR annotated the mapped regions of a contig by 
 ### REQUIREMENTS
 * python >= 3.0
 * pandas >= 0.23.0
+* minimap2
 
 ### RESULTS
 
