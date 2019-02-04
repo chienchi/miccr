@@ -16,6 +16,7 @@ install:
   - conda config --add channels conda-forge
   - conda config --add channels bioconda
   - conda install --yes --file requirements.txt
+  - pip install coverage
   - cd test
 
 script:
