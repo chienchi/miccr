@@ -1,0 +1,41 @@
+language: python
+
+python:
+  - "3.5"
+
+before_install:
+  #- sudo apt-get update -qq
+
+# command to install dependencies
+install:
+  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+  - chmod +x miniconda.sh
+  - ./miniconda.sh -b -f
+  - export PATH="/home/travis/miniconda3/bin:$PATH"
+  - conda update --yes -n base conda
+  - conda config --add channels conda-forge
+  - conda config --add channels bioconda
+  - conda install --yes --file requirements.txt
+  - cd test
+
+script:
+# testing taxonomy.py
+    - echo 10245 > test_taxid.txt
+    - coverage run -p ../taxonomy.py . ./taxonomy.custom.tsv < test_taxid.txt
+# testing miccr.py
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i Refseq_viruses.fa   -p TEST_1 -v
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa.mmi -i Refseq_viruses.fa   -p TEST_2 -v
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i Refseq_viruses.fa   -p TEST_3 -v  -x asm5    
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz --silent
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz -c            -x map-ont 
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz -p TEST_5 -v  -x map-ont
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -f TEST_5.paf          -p TEST_6
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz -p TEST_7 -v  -x map-ont -t4
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz -p TEST_8 -v  -x map-ont -mp 0.05
+    - coverage run -p ../miccr.py -d ./Refseq_viruses.fa     -i ERR2538127.fastq.gz -p TEST_9 -v  -x map-ont -if 0.5
+    - cat TEST_8.ctg.tsv
+    - cat TEST_8.lca_ctg.tsv
+# coverage report
+    - coverage combine
+    - coverage report -m
