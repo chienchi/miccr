@@ -250,10 +250,9 @@ def processPAF(paf, cpus):
         paf,
         sep='\t',
         header=None,
-        names=['qname','qlen','qstart','qend','strand','tname','tlen','tstart','tend','match_bp','mapping_bp','mqua','tp','cm','score','opt1','opt2'],
-        index_col=['qname'],
-        usecols=['qname','qlen','qstart','qend','strand','tname','tlen','tstart','tend','match_bp','mapping_bp','score'],
+        index_col=[0],
     )
+    df = df.rename(columns={1:'qlen',2:'qstart',3:'qend',4:'strand',5:'tname',6:'tlen',7:'tstart',8:'tend',9:'match_bp',10:'mapping_bp',11:'mqua',12:'tp',13:'cm',14:'score'})
     df['ctg'] = df.index
     print_message( "Done loading PAF file.", argvs.silent, begin_t, logfile )
 
