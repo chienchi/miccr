@@ -65,9 +65,12 @@ for ( i in 1:7) {
 	# adjust species level margin space for long species name
 	if(i>6){margin_adj<-2}
   	# select subset by rank
+	##data.rank <- subset(taxa_table, (RANK == ranklist[i] | RANK == "unclassified") & AGG_LENGTH > 0)
 	data.rank <- taxa_table[! is.na(taxa_table[ranklist[i]]),  ]
-	#data.rank <- subset(taxa_table, (RANK == ranklist[i] | RANK == "unclassified") & AGG_LENGTH > 0)
-  	
+	if (length(data.rank[,1]) == 0){
+		# No rank level for plot
+		next
+	}
   	# sum acc_cov_len by organism group
   	bp_plot_table<-aggregate(formula(paste0("AGG_LENGTH~", ranklist[i])), data=data.rank, FUN=sum)
   	# sort by descreasing order 
