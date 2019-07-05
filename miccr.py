@@ -311,12 +311,13 @@ def lca_aggregate_ctg(dfctg, skipCumsumLcaProp, minLcaProp, iqrfactor):
     dfctg = dfctg[ (dfctg.AGG_LENGTH >= minLcaProp*dfctg.LENGTH) &
                    ((dfctg.AGG_LENGTH >= skipCumsumLcaProp*dfctg.LENGTH) |
                     (dfctg.AGG_LENGTH_CUMSUM <= skipCumsumLcaProp*dfctg.LENGTH)) ].copy()
+    dfctg_filtered = dfctg.copy()
+    if not dfctg.empty:
+        dfctg['Q1'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.25))
+        dfctg['Q3'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.75))
+        dfctg['IQR'] = dfctg['Q3']-dfctg['Q1']
 
-    dfctg['Q1'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.25))
-    dfctg['Q3'] = dfctg.groupby(dfctg.index)['AGG_LENGTH'].transform(lambda x: x.quantile(0.75))
-    dfctg['IQR'] = dfctg['Q3']-dfctg['Q1']
-
-    dfctg_filtered = dfctg[ dfctg['AGG_LENGTH'] >= dfctg['Q1']+iqrfactor*dfctg['IQR'] ]
+        dfctg_filtered = dfctg[ dfctg['AGG_LENGTH'] >= dfctg['Q1']+iqrfactor*dfctg['IQR'] ]
 
     lca_dfctg = dfctg_filtered.groupby(['CONTIG']).aggregate({
         'LENGTH': 'first',
@@ -387,7 +388,11 @@ if __name__ == '__main__':
     # output LCA of contig
     print_message( "Calculating LCA classification results...", argvs.silent, begin_t, logfile )
     lca_dfctg = lca_aggregate_ctg(dfctg, argvs.SkipCumsumLcaProp, argvs.minLcaProp, argvs.iqrfactor)
-    print_message( "Writing contig LCA classification results...", argvs.silent, begin_t, logfile )
+    if lca_dfctg.empty:
+        print_message( "All LCA result has been filtered out ...", argvs.silent, begin_t, logfile )
+    else:
+        print_message( "Writing contig LCA classification results...", argvs.silent, begin_t, logfile )
+
     lca_dfctg.to_csv(
         outfile_lca,
         sep='\t',
