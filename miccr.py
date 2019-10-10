@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 __author__    = "Po-E (Paul) Li, Bioscience Division, Los Alamos National Laboratory"
-__version__   = "0.0.2"
+__version__   = "0.0.3"
 __date__      = "2018/10/29"
 __copyright__ = "BSD-3"
 
@@ -193,12 +193,13 @@ def get_extra_regions(mask, qstart, qend, qlen, add=None):
 
     return (mask, [match.span() for match in iterator])
 
-def aggregate_ctg(df, cnames):
+def aggregate_ctg(*cnames):
     """
     aggregate alignments to taxonomic annotate contigs
     argvs: df <pd.DataFrame>, cnames <list>: list of contig indexes
     return: return a <pd.DataFrame> of annotation results
     """
+    global df
     ctg_df_list=[]
 
     for cname in cnames:
@@ -246,12 +247,14 @@ def aggregate_ctg(df, cnames):
     return pd.concat(ctg_df_list)
 
 def processPAF(paf, cpus):
+    global df
+
     df = pd.read_csv(
         paf,
         sep='\t',
         header=None,
         index_col=[0],
-        engine='python'
+        names=list(range(20))
     )
     df = df.rename(columns={1:'qlen',2:'qstart',3:'qend',4:'strand',5:'tname',6:'tlen',7:'tstart',8:'tend',9:'match_bp',10:'mapping_bp',11:'mqua',12:'tp',13:'cm',14:'score'})
     df['ctg'] = df.index
@@ -273,24 +276,24 @@ def processPAF(paf, cpus):
     gc.collect()
 
     print_message( "Aggregating alignments using %s subprocesses..."%cpus, argvs.silent, begin_t, logfile )
-    pool = Pool(processes=cpus)
-    jobs = []
-    results = []
 
-    ctgnames = df.index.unique().tolist()
-    random.shuffle(ctgnames)
-    n = 50 if len(ctgnames)/500 < cpus else 500
-    chunks = [ctgnames[i:i + n] for i in range(0, len(ctgnames), n)]
+    with Pool(processes=cpus) as pool:
+        jobs = []
+        results = []
+        ctgnames = df.index.unique().tolist()
+        random.shuffle(ctgnames)
 
-    for chunk in chunks:
-        jobs.append( pool.apply_async(aggregate_ctg, (df,chunk) ) )
+        n = 50 if len(ctgnames)/500 < cpus else 500
+        CHUNKS = [ctgnames[i:i+n] for i in range(0, len(ctgnames), n)]
 
-    tol_jobs = len(jobs)
-    cnt=0
-    for job in jobs:
-        results.append( job.get() )
-        cnt+=1
-        if argvs.verbose: print_message( "Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
+        jobs = [pool.apply_async(aggregate_ctg, chunk) for chunk in CHUNKS]
+        tol_jobs = len(jobs)
+
+        cnt=0
+        for job in jobs:
+            results.append( job.get() )
+            cnt+=1
+            if argvs.verbose: print_message( "Progress: %s/%s (%.1f%%) chunks done."%(cnt, tol_jobs, cnt/tol_jobs*100), argvs.silent, begin_t, logfile )
 
     #clean up
     pool.close()
