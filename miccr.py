@@ -262,9 +262,12 @@ def processPAF(paf, cpus):
 
     # only keep rows with max score for the same mapped regions
     if argvs.verbose: print_message( "Filtering out secondary alignments for each mapped segment...", argvs.silent, begin_t, logfile )
-    df['score'] = df['score'].str.replace('s1:i:','').astype(int)
+    df = df[df['score'].str.contains('s1:')]
+    df['score'] = df['score'].fillna(0).str.replace('s1:i:','').astype(int)
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
     df = df[ df['score']==df['score_max'] ]
+    df['match_bp'] = df['match_bp'].astype(int)
+    df['mapping_bp'] = df['mapping_bp'].astype(int)
     if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     if argvs.verbose: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
