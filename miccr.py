@@ -14,7 +14,7 @@ import argparse as ap
 import subprocess
 import taxonomy as t
 import numpy as np
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
 import pkg_resources
 pkg_resources.require("pandas>=0.23.0")
 import pandas as pd
@@ -193,17 +193,18 @@ def get_extra_regions(mask, qstart, qend, qlen, add=None):
 
     return (mask, [match.span() for match in iterator])
 
-def aggregate_ctg(*cnames):
+def aggregate_ctg(ns, *cnames):
     """
     aggregate alignments to taxonomic annotate contigs
     argvs: df <pd.DataFrame>, cnames <list>: list of contig indexes
     return: return a <pd.DataFrame> of annotation results
     """
-    global df
+    #global df
     ctg_df_list=[]
-
+    df = ns.df
+    t.loadTaxonomy( ns.dbPath )
     for cname in cnames:
-        ctg_df = df.loc[[cname]]
+        ctg_df = df.loc[cname]
         qlen = ctg_df.iloc[0].qlen.item()
         #ctg_mask = bitarray("0"*qlen)
         ctg_mask = int(0)
@@ -279,7 +280,10 @@ def processPAF(paf, cpus):
     gc.collect()
 
     print_message( "Aggregating alignments using %s subprocesses..."%cpus, argvs.silent, begin_t, logfile )
-
+    mgr = Manager()
+    ns = mgr.Namespace()
+    ns.df = df
+    ns.dbPath = argvs.dbPath
     with Pool(processes=cpus) as pool:
         jobs = []
         results = []
@@ -289,7 +293,7 @@ def processPAF(paf, cpus):
         n = 50 if len(ctgnames)/500 < cpus else 500
         CHUNKS = [ctgnames[i:i+n] for i in range(0, len(ctgnames), n)]
 
-        jobs = [pool.apply_async(aggregate_ctg, chunk) for chunk in CHUNKS]
+        jobs = [pool.apply_async(aggregate_ctg, args=(ns,chunk)) for chunk in CHUNKS]
         tol_jobs = len(jobs)
 
         cnt=0
