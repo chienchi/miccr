@@ -1,7 +1,5 @@
 ## MInimap2 Contig ClassifieR (MICCR)
-
-<img src="https://gitlab.com/poeli/miccr/badges/master/build.svg">
-<img src="https://gitlab.com/poeli/miccr/badges/master/coverage.svg">
+<img src="https://travis-ci.com/poeli/miccr.svg?token=QvCswYmjHRsU25fyM8iG&branch=master">
 
 MICCR is a taxonomically classifier for contigs that leverage minimap2 to map sequences to a reference genome database.
 Based on the mapping results, MICCR annotated the mapped regions of a contig by analyzing LCA taxonomy from the best hits.
@@ -9,6 +7,7 @@ Based on the mapping results, MICCR annotated the mapped regions of a contig by 
 ### REQUIREMENTS
 * python >= 3.0
 * pandas >= 0.23.0
+* minimap2
 
 ### RESULTS
 
