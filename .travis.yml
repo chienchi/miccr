@@ -4,15 +4,17 @@ language: python
 #   - "3.5"
 
 before_install:
-  #- sudo apt-get update -qq
-
-# command to install dependencies
-install:
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
   - chmod +x miniconda.sh
   - ./miniconda.sh -b -f
   - export PATH="/home/travis/miniconda3/bin:$PATH"
-  - conda update --yes -n base conda
+  - conda update --yes conda
+
+# command to install dependencies
+install:
+  - conda create --yes -n test python=$TRAVIS_PYTHON_VERSION
+  - source /home/travis/miniconda3/etc/profile.d/conda.sh
+  - conda activate test
   - conda config --add channels conda-forge
   - conda config --add channels bioconda
   - conda install --yes --file requirements.txt
