@@ -83,7 +83,7 @@ def acc2taxid( acc ):
 			
 			while( acc != accCur and start < end ):
 				
-				posNew = (end+start)/2
+				posNew = int((end+start)/2)
 				
 				f.seek( posNew )
 		

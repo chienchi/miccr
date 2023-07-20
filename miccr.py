@@ -268,8 +268,7 @@ def processPAF(paf, cpus):
     df['score'] = df['score'].fillna(0).str.replace('s1:i:','').astype(int)
     df['score_max'] = df.groupby(['ctg','qstart','qend'])['score'].transform(max)
     df = df[ df['score']==df['score_max'] ]
-    df['match_bp'] = df['match_bp'].astype(int)
-    df['mapping_bp'] = df['mapping_bp'].astype(int)
+    df = df.astype({"match_bp":int,"mapping_bp":int})
     if argvs.verbose: print_message( "Done.", argvs.silent, begin_t, logfile )
 
     if argvs.verbose: print_message( "Converting acc# of mapped reference to taxid...", argvs.silent, begin_t, logfile )
