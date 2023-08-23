@@ -217,7 +217,7 @@ def aggregate_ctg(ns, *cnames):
         ctg_df_agg = ctg_df_agg.rename(columns={'tname':'hit_count','taxid':'lca_taxid'})
 
         ctg_df_agg['lca_taxid'] = ctg_df_agg['lca_taxid'].astype(str)
-        ctg_df_agg = ctg_df_agg[ctg_df_agg.lca_taxid != '0']
+        ctg_df_agg = ctg_df_agg[ctg_df_agg.lca_taxid != '0'].copy()
 
         # sort by score first because we want to process segments with best score first
         ctg_df_agg.sort_values(by=['score','qstart','qend'], ascending=False, inplace=True)
