@@ -255,7 +255,7 @@ def processPAF(paf, cpus):
         sep='\t',
         header=None,
         index_col=[0],
-        #names=list(range(20))
+        names=list(range(20))
         #names=[0,'qlen','qstart','qend','strand','tname','tlen','tstart','tend','match_bp','mapping_bp','mqua','tp','cm','score']
     )
     df = df.rename(columns={1:'qlen',2:'qstart',3:'qend',4:'strand',5:'tname',6:'tlen',7:'tstart',8:'tend',9:'match_bp',10:'mapping_bp',11:'mqua',12:'tp',13:'cm',14:'score'})
